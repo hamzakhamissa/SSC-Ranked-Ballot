@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ranked Ballot Calculator (Static)</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', Arial, sans-serif; margin: 2rem; }
+      .card { max-width: 720px; margin: 0 auto; padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+      h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+      form { display: grid; gap: 0.75rem; }
+      label { font-weight: 600; }
+      input[type="number"], input[type="file"], input[type="url"] { padding: 0.6rem; border: 1px solid #d1d5db; border-radius: 8px; }
+      button { padding: 0.6rem 0.9rem; border-radius: 8px; border: 0; background: #111827; color: white; cursor: pointer; }
+      table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+      th, td { border: 1px solid #e5e7eb; padding: 0.5rem; text-align: left; }
+      th { background: #f9fafb; }
+      .muted { color: #6b7280; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Ranked Ballot Calculator</h1>
+      <form id="uploadForm">
+        <div>
+          <label for="api">API URL (POST /score)</label><br>
+          <input type="url" id="api" name="api" value="http://localhost:5555/score" required>
+        </div>
+        <div>
+          <label for="csv">CSV file</label><br>
+          <input type="file" id="csv" name="csv" accept=".csv" required>
+        </div>
+        <div>
+          <label for="top">Top X to display</label><br>
+          <input type="number" id="top" name="top" min="1" value="5" required>
+        </div>
+        <div>
+          <button type="submit">Calculate</button>
+        </div>
+        <p class="muted">The API must be reachable from the browser. For local use, start the Flask app and keep the default URL.</p>
+      </form>
+
+      <div id="results" style="display:none">
+        <h2>Results</h2>
+        <p id="meta"></p>
+        <table>
+          <thead>
+            <tr><th>Rank</th><th>Candidate</th><th>Score</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById('uploadForm');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const api = document.getElementById('api').value;
+        const csvFile = document.getElementById('csv').files[0];
+        const top = document.getElementById('top').value;
+
+        const body = new FormData();
+        body.append('csv', csvFile);
+        body.append('top', top);
+
+        try {
+          const res = await fetch(api, { method: 'POST', body });
+          const html = await res.text();
+
+          // naive parse of server-rendered HTML for demo; ideally serve JSON endpoint
+          const temp = document.createElement('div');
+          temp.innerHTML = html;
+          const table = temp.querySelector('table');
+          const meta = temp.querySelector('p');
+
+          document.getElementById('meta').textContent = meta ? meta.textContent : '';
+          const rowsTarget = document.getElementById('rows');
+          rowsTarget.innerHTML = '';
+          if (table) {
+            const trs = table.querySelectorAll('tbody tr');
+            trs.forEach(tr => rowsTarget.appendChild(tr.cloneNode(true)));
+          }
+          document.getElementById('results').style.display = 'block';
+        } catch (err) {
+          alert('Failed to contact API: ' + err);
+        }
+      });
+    </script>
+  </body>
+  </html>
+
+
