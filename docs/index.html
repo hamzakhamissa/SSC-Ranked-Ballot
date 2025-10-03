@@ -23,10 +23,6 @@
       <h1>Ranked Ballot Calculator</h1>
       <form id="uploadForm">
         <div>
-          <label for="api">API URL (POST /score)</label><br>
-          <input type="url" id="api" name="api" value="http://localhost:5555/score" required>
-        </div>
-        <div>
           <label for="csv">CSV file</label><br>
           <input type="file" id="csv" name="csv" accept=".csv" required>
         </div>
@@ -37,7 +33,7 @@
         <div>
           <button type="submit">Calculate</button>
         </div>
-        <p class="muted">The API must be reachable from the browser. For local use, start the Flask app and keep the default URL.</p>
+        <p class="muted">Runs entirely in your browser. No server/API required.</p>
       </form>
 
       <div id="results" style="display:none">
@@ -52,39 +48,79 @@
       </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.2/papaparse.min.js"></script>
     <script>
+      function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
+      }
+
+      function extractBallotsFromCsv(csvText) {
+        const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+        const headers = parsed.meta.fields || [];
+        const rankHeaders = headers.filter(h => /^\s*Rank\s+\d+\s*$/i.test(h)).sort((a, b) => {
+          const ai = parseInt(a.replace(/[^0-9]/g, ''), 10) || 9999;
+          const bi = parseInt(b.replace(/[^0-9]/g, ''), 10) || 9999;
+          return ai - bi;
+        });
+        const ballots = [];
+        for (const row of parsed.data) {
+          const choices = [];
+          for (const h of rankHeaders) {
+            const value = String(row[h] || '').trim();
+            if (value) choices.push(value);
+          }
+          if (choices.length > 0) ballots.push(choices);
+        }
+        return ballots;
+      }
+
+      function computeBordaScores(ballots) {
+        const scores = new Map();
+        for (const ranked of ballots) {
+          const k = ranked.length;
+          ranked.forEach((candidate, idx) => {
+            const points = k - idx;
+            scores.set(candidate, (scores.get(candidate) || 0) + points);
+          });
+        }
+        return scores;
+      }
+
+      function topX(scores, x) {
+        const arr = Array.from(scores.entries());
+        arr.sort((a, b) => {
+          if (b[1] !== a[1]) return b[1] - a[1];
+          return a[0].localeCompare(b[0]);
+        });
+        return arr.slice(0, x);
+      }
+
       const form = document.getElementById('uploadForm');
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const api = document.getElementById('api').value;
-        const csvFile = document.getElementById('csv').files[0];
-        const top = document.getElementById('top').value;
+        const file = document.getElementById('csv').files[0];
+        const top = parseInt(document.getElementById('top').value, 10) || 5;
+        if (!file) return;
 
-        const body = new FormData();
-        body.append('csv', csvFile);
-        body.append('top', top);
+        const text = await readFileAsText(file);
+        const ballots = extractBallotsFromCsv(text);
+        const scores = computeBordaScores(ballots);
+        const winners = topX(scores, top);
 
-        try {
-          const res = await fetch(api, { method: 'POST', body });
-          const html = await res.text();
-
-          // naive parse of server-rendered HTML for demo; ideally serve JSON endpoint
-          const temp = document.createElement('div');
-          temp.innerHTML = html;
-          const table = temp.querySelector('table');
-          const meta = temp.querySelector('p');
-
-          document.getElementById('meta').textContent = meta ? meta.textContent : '';
-          const rowsTarget = document.getElementById('rows');
-          rowsTarget.innerHTML = '';
-          if (table) {
-            const trs = table.querySelectorAll('tbody tr');
-            trs.forEach(tr => rowsTarget.appendChild(tr.cloneNode(true)));
-          }
-          document.getElementById('results').style.display = 'block';
-        } catch (err) {
-          alert('Failed to contact API: ' + err);
-        }
+        document.getElementById('meta').textContent = `Ballots: ${ballots.length} | Candidates: ${scores.size}`;
+        const rowsTarget = document.getElementById('rows');
+        rowsTarget.innerHTML = '';
+        winners.forEach(([name, score], idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${idx + 1}</td><td>${name}</td><td>${score}</td>`;
+          rowsTarget.appendChild(tr);
+        });
+        document.getElementById('results').style.display = 'block';
       });
     </script>
   </body>
